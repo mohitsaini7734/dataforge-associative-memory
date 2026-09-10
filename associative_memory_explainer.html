@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Associative Memory & Fast Weights — Interactive Explainer</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --text:#e8e9ec;
+    --muted:#9aa1ac; --accent:#7c9dff; --accent2:#ff8a65; --good:#5fd68e; --bad:#ff6b6b;
+    --border:#2a2f3a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5;}
+  .wrap{max-width:1150px;margin:0 auto;padding:28px 20px 80px;}
+  .badge{display:inline-block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);
+    background:rgba(124,157,255,.12);border:1px solid rgba(124,157,255,.35);padding:4px 10px;border-radius:999px;margin-bottom:14px;}
+  h1{font-size:28px;margin:0 0 6px;}
+  .sub{color:var(--muted);margin:0 0 22px;font-size:15px;}
+  .claim{background:linear-gradient(135deg,rgba(124,157,255,.12),rgba(255,138,101,.08));
+    border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:26px;}
+  .claim .label{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);margin-bottom:6px;}
+  .claim p{margin:0;font-size:16px;}
+  .grid{display:grid;grid-template-columns:1.05fr 1fr;gap:20px;}
+  @media(max-width:880px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:20px;}
+  .card h2{font-size:15px;margin:0 0 14px;color:var(--accent);text-transform:uppercase;letter-spacing:.04em;}
+  .row{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+  .row label{width:180px;font-size:13px;color:var(--muted);flex-shrink:0;}
+  input[type=range]{flex:1;accent-color:var(--accent);}
+  .val{width:46px;text-align:right;font-variant-numeric:tabular-nums;font-size:13px;}
+  button{background:var(--panel2);color:var(--text);border:1px solid var(--border);padding:8px 14px;border-radius:8px;
+    cursor:pointer;font-size:13px;}
+  button:hover{border-color:var(--accent);}
+  canvas{width:100%;display:block;background:var(--panel2);border-radius:10px;}
+  .legend{display:flex;gap:16px;margin-top:8px;font-size:12px;color:var(--muted);flex-wrap:wrap;}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;}
+  .stat{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px dashed var(--border);}
+  .stat b{font-variant-numeric:tabular-nums;}
+  .bits{display:flex;flex-wrap:wrap;gap:2px;margin-top:6px;}
+  .bit{width:10px;height:10px;border-radius:2px;}
+  .bitrow{margin-bottom:10px;}
+  .bitrow .rowlabel{font-size:11px;color:var(--muted);margin-bottom:3px;}
+  .callout{border-left:3px solid var(--accent2);background:rgba(255,138,101,.06);padding:12px 16px;border-radius:0 10px 10px 0;font-size:13.5px;margin-top:10px;}
+  .callout b{color:var(--accent2);}
+  .sources{font-size:12.5px;color:var(--muted);}
+  .sources li{margin-bottom:6px;}
+  code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12.5px;}
+  .flex-between{display:flex;justify-content:space-between;align-items:baseline;}
+  .small{font-size:12px;color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="badge">DataForge 2026 · Pathway Track</div>
+  <h1>How much can a fixed-size memory remember?</h1>
+  <p class="sub">Associative memory & fast weights, made interactive — with a direct line to Dragon Hatchling (BDH) and BDH-CQ.</p>
+
+  <div class="claim">
+    <div class="label">The one-sentence claim this explainer teaches</div>
+    <p>A fixed-size associative memory can store many key→value pairs using simple additive (Hebbian) writes and
+    correctly retrieve them from noisy cues — but because every pair shares the <i>same</i> memory, packing in more
+    pairs raises cross-talk interference, and retrieval accuracy degrades smoothly and predictably — as a
+    continuous function of how many pairs share the memory, not as a sudden collapse at a fixed capacity.</p>
+  </div>
+
+  <div class="card">
+    <h2>Who this is for, and the 60-second test</h2>
+    <p style="margin:0 0 8px"><b>Audience:</b> anyone comfortable with a dot product and a matrix–vector
+    multiply — no prior knowledge of Hopfield networks or BDH assumed. <b>Learning objectives:</b> after
+    this page you should be able to (1) explain how an outer-product associative memory writes and reads,
+    (2) predict how retrieval accuracy changes as more patterns share one memory, and (3) name one concrete
+    way BDH/BDH-CQ's real memory differs from this toy.</p>
+    <p style="margin:0"><b>60-second reproducible test:</b> leave noise at 0% and drag N from 1 to 40.
+    Accuracy will <b>not</b> hold flat and then fall off a cliff — it declines smoothly and monotonically the
+    whole way, from ~100% near N=1 to roughly 90% by N=40 (for d=64), because this demo does a single
+    matrix-vector readout rather than repeated clean-up iterations. (A hard capacity "wall" only appears in the
+    classical <i>iterative</i> Hopfield network, which repeatedly re-reads its own output — a different,
+    stronger dynamic than the single-pass memory built here. That distinction is itself part of the lesson —
+    see the misconception note below.)</p>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Controls — change these, watch the memory</h2>
+        <div class="row">
+          <label>Patterns stored (N)</label>
+          <input type="range" id="nSlider" min="1" max="40" value="3">
+          <span class="val" id="nVal">3</span>
+        </div>
+        <div class="row">
+          <label>Cue noise (bits flipped)</label>
+          <input type="range" id="noiseSlider" min="0" max="50" value="0">
+          <span class="val" id="noiseVal">0%</span>
+        </div>
+        <div class="row">
+          <button id="resample">🎲 New random patterns</button>
+          <span class="small">Memory dimension fixed at d = 64</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Retrieval accuracy vs. patterns stored</h2>
+        <canvas id="chart" width="600" height="260"></canvas>
+        <div class="legend">
+          <span><span class="dot" style="background:var(--accent2)"></span>theoretical estimate (no cue noise)</span>
+          <span><span class="dot" style="background:var(--good)"></span>empirical accuracy (with your noise setting)</span>
+          <span><span class="dot" style="background:var(--text)"></span>current N</span>
+        </div>
+        <p class="small" style="margin-top:10px">Theoretical curve: single-shot Hopfield-style estimate
+          P(correct bit) ≈ Φ(√(d / (N−1))). It assumes an unrelated random cue; watch how your empirical (green) curve
+          falls further below it the moment you add cue noise — the "truth beside estimate" gap <i>is</i> the lesson.</p>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Live memory state</h2>
+        <div class="flex-between"><span class="small">Weight matrix W (64×64), accumulated by Hebbian writes</span></div>
+        <canvas id="heatmap" width="64" height="64" style="width:220px;height:220px;margin:8px auto;display:block;image-rendering:pixelated;"></canvas>
+        <p class="small" style="text-align:center;margin-top:2px">blue = positive weight · orange = negative weight · brighter = larger magnitude</p>
+
+        <div class="bitrow">
+          <div class="rowlabel">Stored key #1 (true)</div>
+          <div class="bits" id="bitsKey"></div>
+        </div>
+        <div class="bitrow">
+          <div class="rowlabel">Cue you're probing with (key #1 + noise)</div>
+          <div class="bits" id="bitsCue"></div>
+        </div>
+        <div class="bitrow">
+          <div class="rowlabel">True value #1</div>
+          <div class="bits" id="bitsTrue"></div>
+        </div>
+        <div class="bitrow">
+          <div class="rowlabel">Retrieved value (red = wrong bit)</div>
+          <div class="bits" id="bitsRetrieved"></div>
+        </div>
+
+        <div class="stat"><span>Bit-level accuracy on this probe</span><b id="statAcc">–</b></div>
+        <div class="stat"><span>Theoretical estimate at this N (no noise)</span><b id="statTheory">–</b></div>
+        <div class="stat"><span>Iterative-Hopfield capacity (different dynamic, for reference)</span><b>≈ 0.14 × d ≈ 9 patterns</b></div>
+      </div>
+
+      <div class="callout">
+        <b>What's actually happening:</b> each stored pair (kᵢ, vᵢ) is written additively:
+        <code>W += vᵢ · kᵢᵀ</code>. To retrieve, the memory is probed with a cue: <code>v' = sign(W · cue)</code>.
+        When N is small, the "self term" for pattern 1 dominates and retrieval is clean. As N grows, the sum of all
+        <i>other</i> patterns' outer products becomes cross-talk noise sitting on top of the signal you want — same
+        memory, more interference, no new capacity added.
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Explain it back (self-check)</h2>
+    <p class="small" style="margin:0 0 8px">Before you scroll further: in 1–2 sentences, explain to yourself why
+    accuracy fell where it did. Then reveal a reference answer and compare — don't just recognise it, check whether
+    your own wording captures the same mechanism.</p>
+    <textarea id="selfExplain" rows="3" style="width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:inherit;font-size:13px;" placeholder="Type your explanation here (not saved or sent anywhere)…"></textarea>
+    <div style="margin-top:8px"><button id="revealBtn">Reveal reference answer</button></div>
+    <div id="referenceAnswer" style="display:none;margin-top:10px" class="callout">
+      <b>Reference answer:</b> every stored pair is added into the <i>same</i> weight matrix as every other pair.
+      With few pairs, one pair's signal dominates and the cue retrieves it cleanly. As more pairs share that matrix,
+      the sum of everyone else's contributions acts as noise on top of the pair you're probing — so accuracy doesn't
+      fail because the memory "runs out of room", it fails because cross-talk from other patterns grows smoothly and
+      continuously. There is no wall and no sudden knee here: this demo does one direct matrix-vector readout, so the
+      signal-to-noise ratio — and therefore accuracy — degrades gradually with N the whole way. (A sharp collapse only
+      shows up in the classical <i>iterative</i> Hopfield network, which repeatedly feeds its own output back in;
+      that's a different, stronger dynamic than the single-pass readout used here.)
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Limitation & common misconception</h2>
+    <p style="margin:0 0 8px">This toy uses random bipolar vectors and a plain outer-product rule — it is <b>not</b>
+    an implementation of BDH. It exists only to make the underlying principle (shared capacity → cross-talk)
+    tangible and falsifiable: drag N up with noise at 0% and watch accuracy decline <b>smoothly and continuously</b>
+    — there is no sudden cliff at any particular N for this single-shot readout, which matches the theoretical curve's
+    shape (a gradually widening gap from 100%, not a step function). A common misconception is that associative
+    memories "fill up" and then reject new writes — in fact they never refuse a write; every pattern degrades
+    <i>all</i> stored patterns a little more, including old ones, which is why interference (a continuous cost, not
+    a hard limit) is the failure mode. A second, related misconception worth flagging explicitly: the well-known
+    "≈0.14×d" Hopfield capacity figure (shown for reference in the stats panel above) describes a <i>different</i>
+    dynamic — an iteratively-converging Hopfield network — and should not be read as the point where this specific
+    single-shot demo breaks; conflating the two is an easy mistake even for people who already know the classical result.</p>
+  </div>
+
+  <div class="card">
+    <h2>Where this shows up in BDH and BDH-CQ</h2>
+    <p style="margin:0 0 10px"><b>Dragon Hatchling (BDH)</b> — Pathway's Post-Transformer architecture — implements
+    the same principle at the level of synapses rather than a single matrix. Attention is reformulated as synaptic
+    memory that updates through local, Hebbian-style writes as the model reads, with roughly 5% of neurons active at
+    any moment (sparse, non-negative activity) and individual synapses reported to respond to recognisable semantic
+    concepts rather than raw tokens. The toy weight matrix above is a simplified, single-layer stand-in for that
+    idea: a shared substrate that many associations write into, not a lookup table with one slot per fact.</p>
+    <p style="margin:0"><b>BDH-CQ</b> (the in-context-learning system built on the same family) makes the fast-weight
+    connection explicit: as demonstrations are ingested, they continuously update a <i>recurrent contextual memory</i>
+    while the model's trained parameters stay fixed — the paper explicitly relates this contextual state to
+    attention, fast-weight memory, and linear-attention views of association, with the special case where
+    state accumulates additively per demonstration, i.e. the same "write more, share the substrate" mechanic explored
+    above. Unlike this toy demo, BDH-CQ's memory is read through iterative latent computation rather than a single
+    matrix–vector product, and the paper reports emergent limits (e.g. on operation composition and ordering) rather
+    than a clean Hopfield-style capacity curve — the analogy holds for the accumulate-and-interfere mechanic, not for
+    every downstream capability.</p>
+    <p style="margin:10px 0 0"><b>Outside Pathway:</b> the same "shared substrate, accumulate-and-interfere" idea
+    is active well beyond BDH — Google Research's Titans (2024) explicitly interprets a Transformer's key/value pairs
+    as an associative memory block and adds a gradient-based, test-time-updated neural memory on top of it. This is
+    independent, third-party corroboration that the mechanism this page teaches is a live research direction, not a
+    framing unique to Pathway's papers.</p>
+  </div>
+
+  <div class="card">
+    <h2>Primary sources</h2>
+    <ul class="sources">
+      <li>Kosowski, A., Uznanski, P., Chorowski, J., Stamirowska, Z., Bartoszkiewicz, M. "The Dragon Hatchling: The Missing Link between the Transformer and Models of the Brain." arXiv:2509.26507, 2025.</li>
+      <li>Engdahl, B., Kosowski, A., Chorowski, J., Stamirowska, Z. et al. "BDH-CQ: In-Context Learning with Recurrent Latent Reasoning." arXiv:2608.09888, 2026.</li>
+      <li>Behrouz, A., Zhong, P., & Mirrokni, V. "Titans: Learning to Memorize at Test Time." arXiv:2501.00663, 2024 — independent 2024 work that explicitly frames Transformer key/value pairs as an associative memory block, corroborating this explainer's framing from outside the Pathway family.</li>
+      <li>Pathway/pathwaycom "bdh" GitHub repository — official toy implementation and Sudoku Extreme benchmark notes (checked at submission time; the 97.4% figure is explicitly labelled there as Pathway's internal result, not reproduced by the public baseline).</li>
+      <li>Schmidhuber, J. "Learning to control fast-weight memories." Neural Computation 4(1), 1992 — classical fast-weight framing (background, pre-2022).</li>
+    </ul>
+    <p class="small" style="margin-top:10px">Note: an earlier internal draft of this explainer's summary included an unverified claim about a third-party
+    "independent audit" of the BDH-CQ result. That claim could not be confirmed against any primary source and has been
+    removed; see the README's "Verification notes" for the correction record.</p>
+  </div>
+
+</div>
+
+<script>
+const D = 64; // memory dimension
+let keys = [], vals = [];
+let W = new Float32Array(D*D);
+
+function randBipolar(){ return Math.random()<0.5?-1:1; }
+function randVec(){ const v=new Array(D); for(let i=0;i<D;i++) v[i]=randBipolar(); return v; }
+
+function buildPatterns(N){
+  keys=[]; vals=[];
+  for(let i=0;i<N;i++){ keys.push(randVec()); vals.push(randVec()); }
+}
+
+function buildMemory(N){
+  W.fill(0);
+  for(let p=0;p<N;p++){
+    const k=keys[p], v=vals[p];
+    for(let i=0;i<D;i++){
+      const vi=v[i];
+      for(let j=0;j<D;j++){
+        W[i*D+j]+= vi*k[j];
+      }
+    }
+  }
+}
+
+function noisyCue(vec, noiseFrac){
+  const c=vec.slice();
+  const nFlip=Math.round(noiseFrac*D);
+  const idx=[...Array(D).keys()];
+  for(let i=idx.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [idx[i],idx[j]]=[idx[j],idx[i]]; }
+  for(let t=0;t<nFlip;t++){ c[idx[t]] *= -1; }
+  return c;
+}
+
+function retrieve(cue){
+  const out=new Array(D);
+  for(let i=0;i<D;i++){
+    let s=0;
+    for(let j=0;j<D;j++) s+=W[i*D+j]*cue[j];
+    out[i]= s>=0?1:-1;
+  }
+  return out;
+}
+
+function bitAccuracy(a,b){
+  let c=0; for(let i=0;i<D;i++) if(a[i]===b[i]) c++;
+  return c/D;
+}
+
+// standard normal CDF via erf approximation
+function erf(x){
+  const sign = x<0?-1:1; x=Math.abs(x);
+  const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+  const t=1/(1+p*x);
+  const y=1-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
+  return sign*y;
+}
+function Phi(x){ return 0.5*(1+erf(x/Math.sqrt(2))); }
+function theoreticalAcc(N){
+  if(N<=1) return 1;
+  return Phi(Math.sqrt(D/(N-1)));
+}
+
+function empiricalAccForN(N, noiseFrac, trials){
+  buildPatterns(N); buildMemory(N);
+  let total=0;
+  for(let t=0;t<trials;t++){
+    const cue=noisyCue(keys[0], noiseFrac);
+    const out=retrieve(cue);
+    total+=bitAccuracy(out, vals[0]);
+  }
+  return total/trials;
+}
+
+const nSlider=document.getElementById('nSlider');
+const noiseSlider=document.getElementById('noiseSlider');
+const nVal=document.getElementById('nVal');
+const noiseVal=document.getElementById('noiseVal');
+const resampleBtn=document.getElementById('resample');
+
+const chartCanvas=document.getElementById('chart');
+const heatCanvas=document.getElementById('heatmap');
+const ctxChart=chartCanvas.getContext('2d');
+const ctxHeat=heatCanvas.getContext('2d');
+
+function drawBits(containerId, vec, compareTo){
+  const el=document.getElementById(containerId);
+  el.innerHTML='';
+  vec.forEach((b,i)=>{
+    const d=document.createElement('div');
+    d.className='bit';
+    let color = b===1 ? '#7c9dff' : '#3a3f4b';
+    if(compareTo && compareTo[i]!==b) color='#ff6b6b';
+    d.style.background=color;
+    el.appendChild(d);
+  });
+}
+
+function drawHeatmap(){
+  const img=ctxHeat.createImageData(D,D);
+  let max=0.0001;
+  for(let i=0;i<W.length;i++) max=Math.max(max, Math.abs(W[i]));
+  for(let i=0;i<D;i++){
+    for(let j=0;j<D;j++){
+      const v=W[i*D+j]/max; // -1..1
+      const idx=(i*D+j)*4;
+      if(v>=0){ img.data[idx]=124+v*80; img.data[idx+1]=157-v*60; img.data[idx+2]=255; }
+      else { img.data[idx]=255; img.data[idx+1]=138+v*60; img.data[idx+2]=101+v*80; }
+      img.data[idx+3]=255;
+    }
+  }
+  ctxHeat.putImageData(img,0,0);
+}
+
+function drawChart(noiseFrac, currentN){
+  const w=chartCanvas.width, h=chartCanvas.height;
+  ctxChart.clearRect(0,0,w,h);
+  const padL=34, padB=24, padT=10, padR=10;
+  const plotW=w-padL-padR, plotH=h-padT-padB;
+  const maxN=40;
+
+  // axes
+  ctxChart.strokeStyle='#3a3f4b'; ctxChart.lineWidth=1;
+  ctxChart.beginPath(); ctxChart.moveTo(padL,padT); ctxChart.lineTo(padL,h-padB); ctxChart.lineTo(w-padR,h-padB); ctxChart.stroke();
+  ctxChart.fillStyle='#9aa1ac'; ctxChart.font='11px sans-serif';
+  ctxChart.fillText('1.0', 4, padT+8);
+  ctxChart.fillText('0.5', 4, padT+plotH/2+4);
+  ctxChart.fillText('0.0', 4, h-padB+2);
+  ctxChart.fillText('N=1', padL-6, h-padB+16);
+  ctxChart.fillText('N=40', w-padR-28, h-padB+16);
+
+  function xy(n,acc){ return [padL+ (n-1)/(maxN-1)*plotW, padT+ (1-acc)*plotH]; }
+
+  // theoretical curve (orange)
+  ctxChart.strokeStyle='#ff8a65'; ctxChart.lineWidth=2; ctxChart.beginPath();
+  for(let n=1;n<=maxN;n++){
+    const acc=theoreticalAcc(n);
+    const [x,y]=xy(n,acc);
+    n===1?ctxChart.moveTo(x,y):ctxChart.lineTo(x,y);
+  }
+  ctxChart.stroke();
+
+  // empirical curve (green) - recompute across full range for current noise setting
+  ctxChart.strokeStyle='#5fd68e'; ctxChart.lineWidth=2; ctxChart.beginPath();
+  for(let n=1;n<=maxN;n++){
+    const acc=empiricalAccForN(n, noiseFrac, 6);
+    const [x,y]=xy(n,acc);
+    n===1?ctxChart.moveTo(x,y):ctxChart.lineTo(x,y);
+  }
+  ctxChart.stroke();
+
+  // current N marker
+  const [cx,cy]=xy(currentN, empiricalAccForN(currentN, noiseFrac, 20));
+  ctxChart.fillStyle='#e8e9ec';
+  ctxChart.beginPath(); ctxChart.arc(cx,cy,4,0,Math.PI*2); ctxChart.fill();
+}
+
+function update(){
+  const N=parseInt(nSlider.value);
+  const noiseFrac=parseInt(noiseSlider.value)/100;
+  nVal.textContent=N;
+  noiseVal.textContent=Math.round(noiseFrac*100)+'%';
+
+  buildPatterns(N);
+  buildMemory(N);
+  const cue=noisyCue(keys[0], noiseFrac);
+  const out=retrieve(cue);
+  const acc=bitAccuracy(out, vals[0]);
+
+  drawBits('bitsKey', keys[0], null);
+  drawBits('bitsCue', cue, keys[0]);
+  drawBits('bitsTrue', vals[0], null);
+  drawBits('bitsRetrieved', out, vals[0]);
+
+  document.getElementById('statAcc').textContent=(acc*100).toFixed(1)+'%';
+  document.getElementById('statTheory').textContent=(theoreticalAcc(N)*100).toFixed(1)+'%';
+
+  drawHeatmap();
+  drawChart(noiseFrac, N);
+}
+
+nSlider.addEventListener('input', update);
+noiseSlider.addEventListener('input', update);
+resampleBtn.addEventListener('click', update);
+
+const revealBtn=document.getElementById('revealBtn');
+if(revealBtn){
+  revealBtn.addEventListener('click', ()=>{
+    const ref=document.getElementById('referenceAnswer');
+    ref.style.display = ref.style.display==='none' ? 'block' : 'none';
+    revealBtn.textContent = ref.style.display==='none' ? 'Reveal reference answer' : 'Hide reference answer';
+  });
+}
+
+update();
+</script>
+</body>
+</html>
